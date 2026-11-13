@@ -91,7 +91,7 @@ export default function RegisterPage() {
           password: data.password,
           name: data.name,
           image: imageUrl,
-          callbackURL: "/auth/login",
+          callbackURL: "/profile",
         },
         {
           onSuccess: (ctx) => {
@@ -103,7 +103,7 @@ export default function RegisterPage() {
               timer: 1500,
               showConfirmButton: false,
             });
-            router.push("/auth/login");
+            router.push("/profile");
           },
           onError: (ctx) => {
             setLoading(false);

@@ -51,7 +51,7 @@ export default function LoginPage() {
             timer: 1500,
             showConfirmButton: false,
           });
-          router.push("/");
+          router.push("/profile");
         },
         onError: (ctx) => {
           setLoading(false);
