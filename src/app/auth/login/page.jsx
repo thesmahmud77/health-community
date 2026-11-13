@@ -6,6 +6,7 @@ import Link from "next/link";
 import Swal from "sweetalert2";
 import { authClient } from "@/lib/auth-client";
 
+
 export default function LoginPage() {
   const {
     register,
