@@ -1,12 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
-import Swal from "sweetalert2";
+import Link from "next/link";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const {
     register,
     handleSubmit,
@@ -15,26 +14,24 @@ export default function RegisterPage() {
   } = useForm();
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [activeField, setActiveField] = useState(null);
 
-  // আলাদা স্টেট দিয়ে ফাইল এবং প্রিভিউ হ্যান্ডেল করার জন্য
+  // ফাইল এবং প্রিভিউ হ্যান্ডেল করার জন্য
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-
-  const router = useRouter();
 
   // ইনপুট ভ্যালু রিয়েল-টাইমে ট্র্যাক করার জন্য
   const passwordValue = watch("password", "");
   const emailValue = watch("email", "");
 
-  // ফাইল সিলেক্ট করলে প্রিভিউ URL তৈরি করার ফাংশন
+  // ফাইল সিলেক্ট করলে প্রিভিউ URL তৈরি
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setSelectedFile(file);
-      const objectUrl = URL.createObjectURL(file);
-      setPreviewUrl(objectUrl);
+      setPreviewUrl(URL.createObjectURL(file));
     } else {
       setSelectedFile(null);
       setPreviewUrl(null);
@@ -57,10 +54,8 @@ export default function RegisterPage() {
     const formData = new FormData();
     formData.append("image", imageFile);
 
-    const imgbbApiKey = "d11b800a59dcca4d8f9ddb86c014f5f7";
-
     const response = await fetch(
-      `https://api.imgbb.com/1/upload?key=${imgbbApiKey}`,
+      `https://api.imgbb.com/1/upload?key=${process.env.NEXT_PUBLIC_IMGBB_KEY}`,
       {
         method: "POST",
         body: formData,
@@ -76,75 +71,69 @@ export default function RegisterPage() {
   };
 
   const onSubmit = async (data) => {
+    setError("");
     setLoading(true);
-    try {
-      let imageUrl = "";
 
-      // লোকাল স্টেট থেকে ফাইল নিয়ে ImgBB তে আপলোড হবে
+    try {
+      // ছবি সিলেক্ট করা থাকলে আগে আপলোড করে URL নেওয়া
+      let imageUrl = "";
       if (selectedFile) {
         imageUrl = await uploadImageToImgBB(selectedFile);
       }
 
-      await authClient.signUp.email(
+      const query = new URLSearchParams({
+        name: data.name,
+        email: data.email,
+      });
+
+      const response = await fetch(
+        `http://localhost:5000/api/otp-send?${query}`,
         {
-          email: data.email,
-          password: data.password,
-          name: data.name,
-          image: imageUrl,
-          callbackURL: "/profile",
-        },
-        {
-          onSuccess: (ctx) => {
-            setLoading(false);
-            Swal.fire({
-              icon: "success",
-              title: "অভিনন্দন!",
-              text: "আপনার রেজিস্ট্রেশন সফল হয়েছে!",
-              timer: 1500,
-              showConfirmButton: false,
-            });
-            router.push("/profile");
-          },
-          onError: (ctx) => {
-            setLoading(false);
-            Swal.fire({
-              icon: "error",
-              title: "রেজিস্ট্রেশন ব্যর্থ হয়েছে",
-              text: ctx.error.message || "কোথাও কোনো সমস্যা হয়েছে।",
-              confirmButtonColor: "#dc2626",
-            });
-          },
+          method: "POST",
         },
       );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.message || "OTP পাঠানো যায়নি, আবার চেষ্টা করুন",
+        );
+      }
+
+      // password ও ছবির URL রাখা হচ্ছে (name, email URL এ যাবে)
+      sessionStorage.setItem("pendingPassword", data.password);
+      if (imageUrl) {
+        sessionStorage.setItem("pendingImage", imageUrl);
+      } else {
+        sessionStorage.removeItem("pendingImage");
+      }
+
+      router.push(`/auth/verifyotp?${query}`);
     } catch (err) {
+      setError(err.message || "কিছু একটা সমস্যা হয়েছে");
+    } finally {
       setLoading(false);
-      Swal.fire({
-        icon: "error",
-        title: "ত্রুটি",
-        text: err.message || "ছবি আপলোড করতে সমস্যা হয়েছে।",
-        confirmButtonColor: "#dc2626",
-      });
     }
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-emerald-50 p-4 text-black relative">
+      {/* ফুল পেজ লোডিং ওভারলে */}
       {loading && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
           <div className="bg-white px-6 py-4 rounded-lg shadow-xl flex items-center space-x-3">
             <div className="w-6 h-6 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
             <span className="text-gray-800 font-medium">
-              অ্যাকাউন্ট তৈরি হচ্ছে, অপেক্ষা করুন...
+              OTP পাঠানো হচ্ছে, অপেক্ষা করুন...
             </span>
           </div>
         </div>
       )}
 
-      {/* মেইন প্রিমিয়াম স্প্লিট কার্ড ডিজাইন */}
+      {/* মেইন প্রিমিয়াম স্প্লিট কার্ড ডিজাইন */}
       <div className="bg-white shadow-2xl rounded-2xl w-full max-w-4xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
-        {/* বামপাশের মেডিকেল কমিউনিটি ব্যানার (রেফারেন্স ইমেজ স্টাইল) */}
+        {/* বামপাশের মেডিকেল কমিউনিটি ব্যানার */}
         <div className="relative hidden md:flex flex-col justify-between bg-emerald-700 text-white p-10 overflow-hidden">
-          {/* ব্যাকগ্রাউন্ড ওভারলে ইমেজ (ডাক্তার / মেডিকেল সেবা) */}
           <div
             className="absolute inset-0 bg-cover bg-center opacity-25 mix-blend-overlay"
             style={{
@@ -168,7 +157,7 @@ export default function RegisterPage() {
               সেরা মেডিকেল পরামর্শ ও স্বাস্থ্যসেবা কমিউনিটি
             </h2>
             <p className="text-emerald-100 text-sm leading-relaxed">
-              বাংলাদেশের সেরা ডাক্তারদের পরামর্শ খুঁজুন, আপনার অভিজ্ঞতা শেয়ার
+              বাংলাদেশের সেরা ডাক্তারদের পরামর্শ খুঁজুন, আপনার অভিজ্ঞতা শেয়ার
               করুন এবং পোস্টে লাইক-কমেন্টের মাধ্যমে হাজারো মানুষের সাথে যুক্ত
               থাকুন।
             </p>
@@ -187,7 +176,7 @@ export default function RegisterPage() {
               রেজিস্ট্রেশন করুন
             </h1>
             <p className="text-sm text-gray-500 mt-1 text-center">
-              আপনার সঠিক তথ্য দিয়ে অ্যাকাউন্ট তৈরি করুন
+              আপনার সঠিক তথ্য দিয়ে অ্যাকাউন্ট তৈরি করুন
             </p>
           </div>
 
@@ -321,6 +310,7 @@ export default function RegisterPage() {
                 </button>
               </div>
 
+              {/* পাসওয়ার্ড ফোকাস থাকলে রিয়েল-টাইম ভ্যালিডেশন লিস্ট */}
               {activeField === "password" && (
                 <div className="mt-2 p-2 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs space-y-1">
                   <p
@@ -399,44 +389,20 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {error && (
+              <p className="text-xs text-red-600 bg-red-50 p-2 rounded-lg">
+                {error}
+              </p>
+            )}
+
             <button
               type="submit"
-              className="w-full bg-emerald-600 text-white p-2.5 rounded-lg hover:bg-emerald-700 transition font-medium text-sm shadow-md shadow-emerald-600/20"
+              disabled={loading}
+              className="w-full cursor-pointer bg-emerald-600 text-white p-2.5 rounded-lg hover:bg-emerald-700 transition font-medium text-sm shadow-md shadow-emerald-600/20 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              রেজিস্ট্রেশন করুন
+              {loading ? "OTP পাঠানো হচ্ছে..." : "পরবর্তী ধাপ (OTP ভেরিফিকেশন)"}
             </button>
           </form>
-
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-gray-200"></div>
-            <span className="flex-shrink mx-4 text-gray-400 text-xs">অথবা</span>
-            <div className="flex-grow border-t border-gray-200"></div>
-          </div>
-
-          <button
-            type="button"
-            className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 text-gray-700 p-2.5 rounded-lg hover:bg-gray-50 transition text-sm shadow-sm"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.13 0-5.78-2.11-6.73-4.96H1.18v3.14C3.15 21.32 7.22 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.27 14.24c-.25-.72-.38-1.49-.38-2.24s.13-1.52.38-2.24V6.62H1.18C.43 8.13 0 9.83 0 12s.43 3.87 1.18 5.38l4.09-3.14z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.22 0 3.15 2.68 1.18 6.62l4.09 3.14c.95-2.85 3.6-4.96 6.73-4.96z"
-              />
-            </svg>
-            গুগল দিয়ে রেজিস্ট্রেশন করুন
-          </button>
 
           <p className="text-center text-xs text-gray-600 pt-1">
             ইতিমধ্যে অ্যাকাউন্ট আছে?{" "}
